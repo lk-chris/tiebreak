@@ -2,14 +2,16 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const PollsView: React.FC = () => {
-  const { setRoute, allPolls } = usePoll();
+  const { setRoute, selectPoll, allPolls } = usePoll();
+
+  const activePolls = allPolls.filter((p) => p.status !== 'closed');
 
   return (
     <>
       <h1>Your polls</h1>
       <p className="sub">Decisions your crew is still arguing about.</p>
 
-      {allPolls.map((poll) => {
+      {activePolls.map((poll) => {
         const isDraft = poll.status === 'draft';
         const isVotingOpen = poll.status === 'open';
 
@@ -28,10 +30,10 @@ export const PollsView: React.FC = () => {
           <a
             key={poll.id}
             className="card"
-            href="#live"
+            href={`#live/${poll.id}`}
             onClick={(e) => {
               e.preventDefault();
-              setRoute('live');
+              selectPoll(poll.id, 'live');
             }}
           >
             <div className="top">

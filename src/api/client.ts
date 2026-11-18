@@ -14,6 +14,7 @@ export const apiClient = {
   },
 
   async createPoll(data: {
+    id?: string;
     question: string;
     options: string[];
     closesLabel?: string;
@@ -34,17 +35,13 @@ export const apiClient = {
 
   async castVote(
     pollId: string,
-    optionId: string,
-    voterId: string
+    optionId: string
   ): Promise<{ success: boolean } | null> {
     try {
       const res = await fetch(`${API_BASE}/polls/${pollId}/vote`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-voter-id': voterId
-        },
-        body: JSON.stringify({ optionId, voterId })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionId })
       });
       if (!res.ok) return null;
       return await res.json();
@@ -57,12 +54,55 @@ export const apiClient = {
     pollId: string,
     idea: string,
     by: string
-  ): Promise<{ success: boolean } | null> {
+  ): Promise<{ success: boolean; optionId?: string } | null> {
     try {
       const res = await fetch(`${API_BASE}/polls/${pollId}/suggest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idea, by })
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  async closePoll(
+    pollId: string
+  ): Promise<{ success: boolean; isTied?: boolean; winner?: string } | null> {
+    try {
+      const res = await fetch(`${API_BASE}/polls/${pollId}/close`, {
+        method: 'POST'
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  async reopenPoll(pollId: string): Promise<{ success: boolean } | null> {
+    try {
+      const res = await fetch(`${API_BASE}/polls/${pollId}/reopen`, {
+        method: 'POST'
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  async resolveTie(
+    pollId: string,
+    winner: string
+  ): Promise<{ success: boolean } | null> {
+    try {
+      const res = await fetch(`${API_BASE}/polls/${pollId}/resolve-tie`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ winner })
       });
       if (!res.ok) return null;
       return await res.json();

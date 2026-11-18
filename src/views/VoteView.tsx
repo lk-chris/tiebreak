@@ -64,10 +64,10 @@ export const VoteView: React.FC = () => {
         </button>
         <a
           className="btn"
-          href="#suggest"
+          href={`#suggest/${activePoll.id}`}
           onClick={(e) => {
             e.preventDefault();
-            setRoute('suggest');
+            setRoute('suggest', activePoll.id);
           }}
         >
           ＋ Suggest an option

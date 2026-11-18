@@ -84,10 +84,10 @@ export const LiveView: React.FC = () => {
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <a
           className="btn teal"
-          href="#vote"
+          href={`#vote/${activePoll.id}`}
           onClick={(e) => {
             e.preventDefault();
-            setRoute('vote');
+            setRoute('vote', activePoll.id);
           }}
         >
           Vote now

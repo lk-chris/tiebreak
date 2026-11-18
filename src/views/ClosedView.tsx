@@ -2,7 +2,7 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const ClosedView: React.FC = () => {
-  const { setRoute, closedPolls } = usePoll();
+  const { selectPoll, closedPolls } = usePoll();
 
   return (
     <>
@@ -11,7 +11,7 @@ export const ClosedView: React.FC = () => {
 
       {closedPolls.map((poll) => {
         let resultLabel = '';
-        if (poll.tieBrokenByHost) {
+        if (poll.isTied || poll.tieBrokenByHost) {
           resultLabel = `⚖️ Tie broken by host · ${poll.totalVotes} votes`;
         } else if (poll.winner) {
           resultLabel = `🏆 ${poll.winner} · ${poll.totalVotes} votes`;
@@ -23,10 +23,10 @@ export const ClosedView: React.FC = () => {
           <a
             key={poll.id}
             className="card"
-            href="#results"
+            href={`#results/${poll.id}`}
             onClick={(e) => {
               e.preventDefault();
-              setRoute('results');
+              selectPoll(poll.id, 'results');
             }}
           >
             <div className="top">

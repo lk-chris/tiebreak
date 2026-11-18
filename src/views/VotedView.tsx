@@ -19,20 +19,20 @@ export const VotedView: React.FC = () => {
       <div style={{ display: 'inline-flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <a
           className="btn dark"
-          href="#live"
+          href={`#live/${activePoll.id}`}
           onClick={(e) => {
             e.preventDefault();
-            setRoute('live');
+            setRoute('live', activePoll.id);
           }}
         >
           See live results
         </a>
         <a
           className="btn"
-          href="#vote"
+          href={`#vote/${activePoll.id}`}
           onClick={(e) => {
             e.preventDefault();
-            setRoute('vote');
+            setRoute('vote', activePoll.id);
           }}
         >
           Change my vote

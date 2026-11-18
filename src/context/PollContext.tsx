@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Poll, PollOption, UserProfile, RouteType, AVATAR_COLORS } from '../types/poll';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { Poll, UserProfile, RouteType, AVATAR_COLORS } from '../types/poll';
 import { apiClient } from '../api/client';
 
 interface PollContextType {
   route: RouteType;
-  setRoute: (r: RouteType) => void;
+  setRoute: (r: RouteType, pollId?: string) => void;
   activePoll: Poll;
+  activePollId: string;
+  selectPoll: (id: string, targetRoute?: RouteType) => void;
   allPolls: Poll[];
   closedPolls: Poll[];
   selectedOption: number;
@@ -16,14 +18,15 @@ interface PollContextType {
   showToast: (msg: string) => void;
   isTied: boolean;
   setIsTied: (tied: boolean) => void;
-  castVote: () => void;
-  addSuggestion: (idea: string, reason?: string) => void;
-  createPoll: (question: string, options: string[], closes: string, allowSuggestions: boolean, showLiveResults: boolean) => void;
-  breakTieWithOption: (optIndex: number) => void;
-  endVoting: () => void;
-  reopenVoting: () => void;
+  castVote: () => Promise<void>;
+  addSuggestion: (idea: string, reason?: string) => Promise<void>;
+  createPoll: (question: string, options: string[], closes: string, allowSuggestions: boolean, showLiveResults: boolean) => Promise<void>;
+  breakTieWithOption: (optIndex: number) => Promise<void>;
+  endVoting: () => Promise<void>;
+  reopenVoting: () => Promise<void>;
   newPollOptions: string[];
   setNewPollOptions: React.Dispatch<React.SetStateAction<string[]>>;
+  refreshPolls: () => Promise<void>;
 }
 
 const DEFAULT_POLL: Poll = {
@@ -34,89 +37,23 @@ const DEFAULT_POLL: Poll = {
   startedBy: 'Reubenson',
   subtitle: '11 of your crew voted · last one 2 min ago',
   options: [
-    { id: '1', t: 'Detroit-style from Emmy’s', by: 'Priya', v: 5 },
-    { id: '2', t: 'Pepperoni from Slice House', v: 3 },
-    { id: '3', t: 'Veggie supreme from Nino’s', by: 'Jonah', v: 2 },
-    { id: '4', t: 'Margherita from Lupa', v: 1 }
+    { id: 'p1', t: 'Detroit-style from Emmy’s', by: 'Priya', v: 5 },
+    { id: 'p2', t: 'Pepperoni from Slice House', v: 3 },
+    { id: 'p3', t: 'Veggie supreme from Nino’s', by: 'Jonah', v: 2 },
+    { id: 'p4', t: 'Margherita from Lupa', v: 1 }
   ],
   totalVotes: 11
 };
 
-const INITIAL_POLLS_LIST: Poll[] = [
-  DEFAULT_POLL,
-  {
-    id: 'birthday-trip',
-    question: 'Where do we go for Dami’s birthday?',
-    status: 'open',
-    closesLabel: 'Closes Friday 9:00 PM',
-    options: [
-      { id: 'b1', t: 'Karaoke at Boombox', v: 3 },
-      { id: 'b2', t: 'Arcade & bowling at Lane7', v: 3 }
-    ],
-    totalVotes: 6,
-    subtitle: '6 votes · neck and neck'
-  },
-  {
-    id: 'movie-night',
-    question: 'Movie night pick',
-    status: 'draft',
-    closesLabel: 'Draft',
-    options: [],
-    totalVotes: 0,
-    subtitle: 'No options yet. Add a few to get started.'
-  }
-];
-
-const INITIAL_CLOSED_POLLS: Poll[] = [
-  {
-    id: 'pizza-night-closed',
-    question: 'Pizza night: what are we ordering?',
-    status: 'closed',
-    closesLabel: 'Closed',
-    closedDateLabel: 'Yesterday',
-    winner: 'Detroit-style from Emmy’s',
-    totalVotes: 11,
-    options: [
-      { id: '1', t: 'Detroit-style from Emmy’s', by: 'Priya', v: 5 },
-      { id: '2', t: 'Pepperoni from Slice House', v: 3 },
-      { id: '3', t: 'Veggie supreme from Nino’s', by: 'Jonah', v: 2 },
-      { id: '4', t: 'Margherita from Lupa', v: 1 }
-    ]
-  },
-  {
-    id: 'road-trip-dj',
-    question: 'Road trip playlist: who drives DJ?',
-    status: 'closed',
-    closesLabel: 'Closed',
-    closedDateLabel: 'Nov 9',
-    winner: 'Priya',
-    totalVotes: 9,
-    options: [
-      { id: 'r1', t: 'Priya', v: 5 },
-      { id: 'r2', t: 'Marcus', v: 4 }
-    ]
-  },
-  {
-    id: 'game-night-catan',
-    question: 'Game night: Catan or Codenames?',
-    status: 'closed',
-    closesLabel: 'Closed',
-    closedDateLabel: 'Oct 28',
-    winner: 'Catan',
-    tieBrokenByHost: true,
-    totalVotes: 8,
-    options: [
-      { id: 'g1', t: 'Catan', v: 4 },
-      { id: 'g2', t: 'Codenames', v: 4 }
-    ]
-  }
-];
-
 const PollContext = createContext<PollContextType | undefined>(undefined);
 
 export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const getInitialRoute = (): RouteType => {
-    const hash = window.location.hash.replace('#', '') as RouteType;
+  const parseHash = (): { route: RouteType; pollId: string | null } => {
+    const raw = window.location.hash.replace('#', '');
+    const parts = raw.split('/');
+    const r = parts[0] as RouteType;
+    const pollId = parts[1] || null;
+
     const validRoutes: RouteType[] = [
       'polls',
       'live',
@@ -129,113 +66,116 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
       'closed',
       'profile'
     ];
-    return validRoutes.includes(hash) ? hash : 'polls';
+    return {
+      route: validRoutes.includes(r) ? r : 'polls',
+      pollId
+    };
   };
 
-  const [route, setRouteState] = useState<RouteType>(getInitialRoute());
-  const [activePoll, setActivePoll] = useState<Poll>(DEFAULT_POLL);
-  const [allPolls, setAllPolls] = useState<Poll[]>(INITIAL_POLLS_LIST);
-  const [closedPolls] = useState<Poll[]>(INITIAL_CLOSED_POLLS);
+  const initial = parseHash();
+  const [route, setRouteState] = useState<RouteType>(initial.route);
+  const [activePollId, setActivePollId] = useState<string>(initial.pollId || 'pizza-night');
+  const [allPolls, setAllPolls] = useState<Poll[]>([DEFAULT_POLL]);
   const [selectedOption, setSelectedOption] = useState<number>(-1);
   const [isTied, setIsTied] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
   const [newPollOptions, setNewPollOptions] = useState<string[]>(['', '', '']);
   const [profile, setProfile] = useState<UserProfile>({
     name: 'Christian',
-    avatarColor: AVATAR_COLORS[1], // '#f2c14e'
+    avatarColor: AVATAR_COLORS[1],
     notifyOnClose: true,
     notifyOnSuggestion: true
   });
 
-  const setRoute = (newRoute: RouteType) => {
-    window.location.hash = newRoute;
-    setRouteState(newRoute);
-    window.scrollTo(0, 0);
-  };
+  const activePoll =
+    allPolls.find((p) => p.id === activePollId) ||
+    allPolls.find((p) => p.status === 'open') ||
+    DEFAULT_POLL;
 
-  useEffect(() => {
-    const handleHashChange = () => {
-      const h = window.location.hash.replace('#', '') as RouteType;
-      const validRoutes: RouteType[] = [
-        'polls',
-        'live',
-        'vote',
-        'suggest',
-        'voted',
-        'new',
-        'created',
-        'results',
-        'closed',
-        'profile'
-      ];
-      setRouteState(validRoutes.includes(h) ? h : 'polls');
-      window.scrollTo(0, 0);
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-
-    // Initial hydration from SQLite D1 if available
-    apiClient.getPolls().then((serverPolls) => {
-      if (serverPolls && serverPolls.length > 0) {
-        setAllPolls(serverPolls);
-        const current = serverPolls.find((p) => p.status === 'open') || serverPolls[0];
-        if (current) setActivePoll(current);
-      }
-    });
-
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  const closedPolls = allPolls.filter((p) => p.status === 'closed');
 
   const showToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => {
-      setToast(null);
-    }, 2200);
+    setTimeout(() => setToast(null), 2200);
   };
 
-  const castVote = () => {
-    if (selectedOption < 0) return;
-    const targetOpt = activePoll.options[selectedOption];
-    setActivePoll((prev) => {
-      const newOpts = prev.options.map((opt, idx) => {
-        if (idx === selectedOption) {
-          return { ...opt, v: opt.v + 1 };
-        }
-        return opt;
-      });
-      const newTotal = (prev.totalVotes || 0) + 1;
-      return {
-        ...prev,
-        options: newOpts,
-        totalVotes: newTotal,
-        subtitle: `${newTotal} of your crew voted · just now`
-      };
-    });
-
-    if (targetOpt) {
-      apiClient.castVote(activePoll.id, targetOpt.id, profile.name);
+  const setRoute = (newRoute: RouteType, pollId?: string) => {
+    const targetPollId = pollId || activePollId;
+    if (newRoute === 'polls' || newRoute === 'closed' || newRoute === 'new' || newRoute === 'profile') {
+      window.location.hash = newRoute;
+    } else {
+      window.location.hash = `${newRoute}/${targetPollId}`;
     }
-    setRoute('voted');
+    setRouteState(newRoute);
+    if (pollId) setActivePollId(pollId);
+    window.scrollTo(0, 0);
   };
 
-  const addSuggestion = (idea: string, _reason?: string) => {
-    if (!idea.trim()) return;
-    const newOption: PollOption = {
-      id: Date.now().toString(),
-      t: idea.trim(),
-      by: profile.name,
-      v: 0
+  const selectPoll = (id: string, targetRoute: RouteType = 'live') => {
+    setActivePollId(id);
+    setSelectedOption(-1);
+    setRoute(targetRoute, id);
+  };
+
+  const refreshPolls = useCallback(async () => {
+    const polls = await apiClient.getPolls();
+    if (polls && polls.length > 0) {
+      setAllPolls(polls);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshPolls();
+
+    const handleHash = () => {
+      const parsed = parseHash();
+      setRouteState(parsed.route);
+      if (parsed.pollId) {
+        setActivePollId(parsed.pollId);
+      }
+      window.scrollTo(0, 0);
     };
-    setActivePoll((prev) => ({
-      ...prev,
-      options: [...prev.options, newOption]
-    }));
-    apiClient.suggestOption(activePoll.id, idea.trim(), profile.name);
-    setRoute('vote');
+
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [refreshPolls]);
+
+  // Update isTied state from active poll whenever activePoll changes
+  useEffect(() => {
+    if (activePoll) {
+      if (activePoll.isTied !== undefined) {
+        setIsTied(activePoll.isTied);
+      } else {
+        const sorted = [...activePoll.options].sort((a, b) => b.v - a.v);
+        setIsTied(sorted.length >= 2 && sorted[0].v === sorted[1].v && sorted[0].v > 0);
+      }
+    }
+  }, [activePoll]);
+
+  const castVote = async () => {
+    if (selectedOption < 0 || !activePoll) return;
+    const opt = activePoll.options[selectedOption];
+    if (!opt) return;
+
+    // Send vote directly to SQLite database
+    await apiClient.castVote(activePoll.id, opt.id);
+    await refreshPolls();
+
+    setRoute('voted', activePoll.id);
+  };
+
+  const addSuggestion = async (idea: string, _reason?: string) => {
+    if (!idea.trim() || !activePoll) return;
+
+    // Save suggestion directly to SQLite database
+    await apiClient.suggestOption(activePoll.id, idea.trim(), profile.name);
+    await refreshPolls();
+
+    setRoute('vote', activePoll.id);
     showToast('Sent to the host for approval');
   };
 
-  const createPoll = (
+  const createPoll = async (
     question: string,
     options: string[],
     closes: string,
@@ -244,51 +184,48 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const validOpts = options.filter((o) => o.trim().length > 0);
     const newId = 'poll-' + Date.now();
-    const newP: Poll = {
+
+    // Insert poll directly to SQLite database
+    await apiClient.createPoll({
       id: newId,
       question: question.trim() || 'Untitled poll',
-      status: 'open',
-      closesLabel: `Closes ${closes}`,
-      startedBy: profile.name,
-      subtitle: `0 votes · just started`,
-      options: validOpts.map((text, idx) => ({
-        id: 'opt-' + idx,
-        t: text,
-        v: 0
-      })),
-      totalVotes: 0
-    };
-
-    setActivePoll(newP);
-    setAllPolls((prev) => [newP, ...prev]);
-    setNewPollOptions(['', '', '']);
-    apiClient.createPoll({
-      question: newP.question,
       options: validOpts,
-      closesLabel: newP.closesLabel,
+      closesLabel: `Closes ${closes}`,
       startedBy: profile.name
     });
-    setRoute('created');
+
+    await refreshPolls();
+    setActivePollId(newId);
+    setNewPollOptions(['', '', '']);
+    setRoute('created', newId);
   };
 
-  const breakTieWithOption = (optIndex: number) => {
+  const endVoting = async () => {
+    if (!activePoll) return;
+    const res = await apiClient.closePoll(activePoll.id);
+    if (res?.isTied !== undefined) {
+      setIsTied(res.isTied);
+    }
+    await refreshPolls();
+    setRoute('results', activePoll.id);
+  };
+
+  const reopenVoting = async () => {
+    if (!activePoll) return;
+    await apiClient.reopenPoll(activePoll.id);
+    await refreshPolls();
+    setRoute('live', activePoll.id);
+  };
+
+  const breakTieWithOption = async (optIndex: number) => {
+    if (!activePoll) return;
+    const chosen = activePoll.options[optIndex];
+    if (!chosen) return;
+
+    await apiClient.resolveTie(activePoll.id, chosen.t);
     setIsTied(false);
-    setActivePoll((prev) => {
-      const selected = prev.options[optIndex];
-      return {
-        ...prev,
-        winner: selected ? selected.t : prev.options[0]?.t
-      };
-    });
+    await refreshPolls();
     showToast('Result shared with the crew');
-  };
-
-  const endVoting = () => {
-    setRoute('results');
-  };
-
-  const reopenVoting = () => {
-    setRoute('live');
   };
 
   return (
@@ -297,6 +234,8 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
         route,
         setRoute,
         activePoll,
+        activePollId,
+        selectPoll,
         allPolls,
         closedPolls,
         selectedOption,
@@ -314,7 +253,8 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
         endVoting,
         reopenVoting,
         newPollOptions,
-        setNewPollOptions
+        setNewPollOptions,
+        refreshPolls
       }}
     >
       {children}

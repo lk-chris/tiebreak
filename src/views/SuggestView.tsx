@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const SuggestView: React.FC = () => {
-  const { setRoute, addSuggestion } = usePoll();
+  const { setRoute, addSuggestion, activePoll } = usePoll();
   const [idea, setIdea] = useState('');
   const [reason, setReason] = useState('');
 
@@ -48,10 +48,10 @@ export const SuggestView: React.FC = () => {
           </button>
           <a
             className="btn ghost"
-            href="#vote"
+            href={`#vote/${activePoll.id}`}
             onClick={(e) => {
               e.preventDefault();
-              setRoute('vote');
+              setRoute('vote', activePoll.id);
             }}
           >
             Cancel

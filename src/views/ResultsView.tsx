@@ -18,13 +18,23 @@ export const ResultsView: React.FC = () => {
     p: totalVotes > 0 ? Math.round((opt.v / totalVotes) * 100) : 0
   }));
 
-  const winner = calculatedOptions[0] || {
+  const sorted = [...calculatedOptions].sort((a, b) => b.v - a.v);
+  const maxVotes = sorted[0]?.v || 0;
+  const topTied = sorted.filter((o) => o.v === maxVotes && maxVotes > 0);
+
+  const winnerTitle = activePoll.winner || sorted[0]?.t || 'Winning Option';
+  const winnerOpt = sorted.find((o) => o.t === winnerTitle) || sorted[0] || {
     id: '0',
-    t: 'Detroit-style from Emmy’s',
-    v: 5,
-    p: 45
+    t: winnerTitle,
+    v: maxVotes,
+    p: totalVotes > 0 ? Math.round((maxVotes / totalVotes) * 100) : 0
   };
-  const remaining = calculatedOptions.slice(1);
+  const remaining = sorted.filter((o) => o.id !== winnerOpt.id);
+
+  const tieHeadline =
+    topTied.length >= 2
+      ? `${topTied[0].t} & ${topTied[1].t} (${maxVotes} votes each)`
+      : 'Tied between options';
 
   return (
     <>
@@ -41,34 +51,29 @@ export const ResultsView: React.FC = () => {
         <div className="trophy" style={{ textAlign: 'left', fontSize: '44px' }}>
           {isTied ? '⚖️' : '🏆'}
         </div>
-        <h2>
-          {isTied
-            ? 'Detroit-style & Pepperoni (4 votes each)'
-            : winner.t}
-        </h2>
+        <h2>{isTied ? tieHeadline : winnerTitle}</h2>
         <span className="pill">
           {isTied
             ? 'Host breaks the tie'
-            : `${winner.v} of ${totalVotes} votes · ${winner.p}%`}
+            : `${winnerOpt.v} of ${totalVotes} votes · ${winnerOpt.p}%`}
         </span>
       </div>
 
       {isTied ? (
         <div className="panel">
-          <div
-            className="row opt"
-            onClick={() => breakTieWithOption(0)}
-          >
-            <div className="t">Detroit-style from Emmy’s</div>
-            <span className="btn teal">Pick this</span>
-          </div>
-          <div
-            className="row opt"
-            onClick={() => breakTieWithOption(1)}
-          >
-            <div className="t">Pepperoni from Slice House</div>
-            <span className="btn teal">Pick this</span>
-          </div>
+          {(topTied.length >= 2 ? topTied : sorted.slice(0, 2)).map((opt) => {
+            const originalIndex = activePoll.options.findIndex((o) => o.id === opt.id);
+            return (
+              <div
+                key={opt.id}
+                className="row opt"
+                onClick={() => breakTieWithOption(originalIndex)}
+              >
+                <div className="t">{opt.t}</div>
+                <span className="btn teal">Pick this</span>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="panel">
@@ -96,7 +101,7 @@ export const ResultsView: React.FC = () => {
         </button>
         <a
           className="btn"
-          href="#live"
+          href={`#live/${activePoll.id}`}
           onClick={(e) => {
             e.preventDefault();
             reopenVoting();

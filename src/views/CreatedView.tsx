@@ -23,7 +23,7 @@ export const CreatedView: React.FC = () => {
           onClick={() => {
             if (navigator.clipboard) {
               navigator.clipboard.writeText(
-                `${window.location.origin}/#live`
+                `${window.location.origin}/#live/${pollSlug}`
               );
             }
             showToast('Link copied');
@@ -35,10 +35,10 @@ export const CreatedView: React.FC = () => {
 
       <a
         className="btn"
-        href="#live"
+        href={`#live/${pollSlug}`}
         onClick={(e) => {
           e.preventDefault();
-          setRoute('live');
+          setRoute('live', pollSlug);
         }}
       >
         Open poll

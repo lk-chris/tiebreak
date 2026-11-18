@@ -16,6 +16,7 @@ export interface Poll {
   options: PollOption[];
   totalVotes?: number;
   winner?: string;
+  isTied?: boolean;
   closedDateLabel?: string;
   tieBrokenByHost?: boolean;
 }
