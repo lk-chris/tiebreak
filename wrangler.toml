@@ -5,8 +5,3 @@ main = "worker.ts"
 [assets]
 directory = "./dist"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "tiebreak-db"
-database_id = "local-d1-tiebreak"
-migrations_dir = "migrations"
