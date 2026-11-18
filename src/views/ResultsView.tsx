@@ -29,7 +29,6 @@ export const ResultsView: React.FC = () => {
     v: maxVotes,
     p: totalVotes > 0 ? Math.round((maxVotes / totalVotes) * 100) : 0
   };
-  const remaining = sorted.filter((o) => o.id !== winnerOpt.id);
 
   const tieHeadline =
     topTied.length >= 2
@@ -77,14 +76,19 @@ export const ResultsView: React.FC = () => {
         </div>
       ) : (
         <div className="panel">
-          {remaining.map((o) => (
+          {sorted.map((o) => (
             <div className="row" key={o.id}>
-              <div className="t">{o.t}</div>
+              <div className="t">
+                {o.t}
+                {o.id === winnerOpt.id && (
+                  <small style={{ color: 'var(--red)', fontWeight: 800, marginLeft: '6px' }}>🏆 Winner</small>
+                )}
+              </div>
               <div className="bar">
                 <i style={{ width: `${o.p}%` }}></i>
               </div>
               <div className="pct">
-                {o.p}% <small>{o.v}</small>
+                {o.p}% <small>{o.v} vote{o.v === 1 ? '' : 's'}</small>
               </div>
             </div>
           ))}

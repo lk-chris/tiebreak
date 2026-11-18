@@ -6,7 +6,10 @@ export const LiveView: React.FC = () => {
 
   const totalVotes = activePoll.options.reduce((sum, opt) => sum + opt.v, 0);
 
-  const calculatedOptions = activePoll.options.map((opt) => ({
+  // Sort options so highest votes appear first
+  const sortedOptions = [...activePoll.options].sort((a, b) => b.v - a.v);
+
+  const calculatedOptions = sortedOptions.map((opt) => ({
     ...opt,
     p: totalVotes > 0 ? Math.round((opt.v / totalVotes) * 100) : 0
   }));
@@ -20,11 +23,13 @@ export const LiveView: React.FC = () => {
   };
   const runnerUp = calculatedOptions[1];
   const aheadCount = runnerUp ? leader.v - runnerUp.v : leader.v;
-  const remainingOptions = calculatedOptions.slice(1);
 
   // Generate segment ticks matching total votes count (or min 11)
   const segmentCount = Math.max(totalVotes, 11);
   const activeTicks = leader.v;
+
+  const shareUrl = `${window.location.origin}/#live/${activePoll.id || 'pizza-night'}`;
+  const displayUrl = `${window.location.host}/#live/${activePoll.id || 'pizza-night'}`;
 
   return (
     <>
@@ -39,7 +44,7 @@ export const LiveView: React.FC = () => {
       <p className="sub">{activePoll.subtitle || `${totalVotes} of your crew voted · last one 2 min ago`}</p>
 
       <div className="hero">
-        <div className="ribbon">IN THE LEAD</div>
+        <div className="ribbon">{totalVotes > 0 ? 'IN THE LEAD' : 'POLL OPEN'}</div>
         <h2>{leader.t}</h2>
         {leader.by && <span className="pill">Suggested by {leader.by}</span>}
 
@@ -53,7 +58,9 @@ export const LiveView: React.FC = () => {
         >
           <div className="big">{leader.p}%</div>
           <span className="pill">
-            {leader.v} of {totalVotes} votes · ahead by {aheadCount}
+            {totalVotes > 0
+              ? `${leader.v} of ${totalVotes} votes · ahead by ${aheadCount}`
+              : `0 votes · be the first to vote`}
           </span>
         </div>
 
@@ -64,8 +71,9 @@ export const LiveView: React.FC = () => {
         </div>
       </div>
 
+      {/* Show all options in the breakdown panel */}
       <div className="panel">
-        {remainingOptions.map((o) => (
+        {calculatedOptions.map((o) => (
           <div className="row" key={o.id}>
             <div className="t">
               {o.t}
@@ -94,8 +102,8 @@ export const LiveView: React.FC = () => {
         </a>
       </div>
 
-      <div className="cta">
-        <b>Share to get votes</b> tiebreak.test/p/{activePoll.id || 'pizza-night'}{' '}
+      <div className="cta" style={{ wordBreak: 'break-all' }}>
+        <b>Share to get votes</b> {displayUrl}{' '}
         <span className="sp"></span>
         <button
           className="btn"
@@ -111,7 +119,7 @@ export const LiveView: React.FC = () => {
           type="button"
           onClick={() => {
             if (navigator.clipboard) {
-              navigator.clipboard.writeText(window.location.href);
+              navigator.clipboard.writeText(shareUrl);
             }
             showToast('Link copied');
           }}
