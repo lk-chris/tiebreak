@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Poll, PollOption, UserProfile, RouteType, AVATAR_COLORS } from '../types/poll';
+import { apiClient } from '../api/client';
 
 interface PollContextType {
   route: RouteType;
@@ -172,6 +173,16 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     window.addEventListener('hashchange', handleHashChange);
+
+    // Initial hydration from SQLite D1 if available
+    apiClient.getPolls().then((serverPolls) => {
+      if (serverPolls && serverPolls.length > 0) {
+        setAllPolls(serverPolls);
+        const current = serverPolls.find((p) => p.status === 'open') || serverPolls[0];
+        if (current) setActivePoll(current);
+      }
+    });
+
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
@@ -184,6 +195,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const castVote = () => {
     if (selectedOption < 0) return;
+    const targetOpt = activePoll.options[selectedOption];
     setActivePoll((prev) => {
       const newOpts = prev.options.map((opt, idx) => {
         if (idx === selectedOption) {
@@ -199,6 +211,10 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
         subtitle: `${newTotal} of your crew voted · just now`
       };
     });
+
+    if (targetOpt) {
+      apiClient.castVote(activePoll.id, targetOpt.id, profile.name);
+    }
     setRoute('voted');
   };
 
@@ -214,6 +230,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...prev,
       options: [...prev.options, newOption]
     }));
+    apiClient.suggestOption(activePoll.id, idea.trim(), profile.name);
     setRoute('vote');
     showToast('Sent to the host for approval');
   };
@@ -226,8 +243,9 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     _showLiveResults: boolean
   ) => {
     const validOpts = options.filter((o) => o.trim().length > 0);
+    const newId = 'poll-' + Date.now();
     const newP: Poll = {
-      id: 'poll-' + Date.now(),
+      id: newId,
       question: question.trim() || 'Untitled poll',
       status: 'open',
       closesLabel: `Closes ${closes}`,
@@ -244,6 +262,12 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActivePoll(newP);
     setAllPolls((prev) => [newP, ...prev]);
     setNewPollOptions(['', '', '']);
+    apiClient.createPoll({
+      question: newP.question,
+      options: validOpts,
+      closesLabel: newP.closesLabel,
+      startedBy: profile.name
+    });
     setRoute('created');
   };
 
