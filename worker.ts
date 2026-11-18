@@ -8,8 +8,26 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname, method } = url;
-    const base = env.SUPABASE_URL;
-    const key = env.SUPABASE_ANON_KEY;
+    const base = env.SUPABASE_URL?.trim();
+    const key = env.SUPABASE_ANON_KEY?.trim();
+
+    if (pathname === '/api/health') {
+      let sbTest = 'not run';
+      try {
+        const res = await fetch(`${base}/rest/v1/polls`, {
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${key}`
+          }
+        });
+        sbTest = { status: res.status, text: await res.text() } as any;
+      } catch (e: any) {
+        sbTest = { error: e.message } as any;
+      }
+      return new Response(JSON.stringify({ status: 'ok', base, hasKey: !!key, sbTest }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     // Helper: call Supabase REST API directly (no SDK needed in Worker)
     const sb = async (
@@ -40,10 +58,14 @@ export default {
       // 1. GET /api/polls — fetch all polls + options
       if (pathname === '/api/polls' && method === 'GET') {
         const polls = await sb('/polls?order=created_at.desc');
+        if (!Array.isArray(polls)) {
+          return json({ error: polls?.message || 'Failed to fetch polls from database', details: polls }, 500);
+        }
         const options = await sb('/poll_options?order=v.desc');
+        const optList = Array.isArray(options) ? options : [];
 
-        const data = (polls || []).map((p: any) => {
-          const pollOpts = (options || []).filter((o: any) => o.poll_id === p.id);
+        const data = polls.map((p: any) => {
+          const pollOpts = optList.filter((o: any) => o.poll_id === p.id);
           const totalVotes = pollOpts.reduce((sum: number, o: any) => sum + o.v, 0);
           return {
             id: p.id,
