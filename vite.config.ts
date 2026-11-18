@@ -38,10 +38,10 @@ function sqliteDevServerPlugin(): Plugin {
       const existing = db.prepare('SELECT COUNT(*) as count FROM polls').get() as { count: number };
       if (existing.count === 0) {
         db.exec(`
-          INSERT INTO polls (id, question, status, closes_label, started_by, subtitle) VALUES
-            ('pizza-night', 'Pizza night: what are we ordering?', 'open', 'Closes today 7:00 PM', 'Reubenson', '11 of your crew voted · last one 2 min ago'),
-            ('birthday-trip', 'Where do we go for Dami’s birthday?', 'open', 'Closes Friday 9:00 PM', 'Christian', '6 votes · neck and neck'),
-            ('movie-night', 'Movie night pick', 'draft', 'Draft', 'Christian', 'No options yet. Add a few to get started.'),
+          INSERT INTO polls (id, question, status, closes_label, started_by, subtitle, winner, is_tied) VALUES
+            ('pizza-night', 'Pizza night: what are we ordering?', 'open', 'Closes today 7:00 PM', 'Reubenson', '11 of your crew voted · last one 2 min ago', NULL, 0),
+            ('birthday-trip', 'Where do we go for Dami’s birthday?', 'open', 'Closes Friday 9:00 PM', 'Christian', '6 votes · neck and neck', NULL, 0),
+            ('movie-night', 'Movie night pick', 'draft', 'Draft', 'Christian', 'No options yet. Add a few to get started.', NULL, 0),
             ('road-trip-dj', 'Road trip playlist: who drives DJ?', 'closed', 'Closed', 'Priya', '9 votes', 'Priya', 0),
             ('game-night-catan', 'Game night: Catan or Codenames?', 'closed', 'Closed', 'Alex', '8 votes', 'Catan', 1);
 
