@@ -2,9 +2,11 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const CreatedView: React.FC = () => {
-  const { setRoute, showToast, activePoll } = usePoll();
+  const { selectPoll, showToast, activePollId } = usePoll();
 
-  const pollSlug = activePoll.id ? activePoll.id : 'new-poll';
+  const pollSlug = activePollId || 'pizza-night';
+  const shareUrl = `${window.location.origin}/#live/${pollSlug}`;
+  const displayUrl = `${window.location.host}/#live/${pollSlug}`;
 
   return (
     <div className="empty">
@@ -14,17 +16,15 @@ export const CreatedView: React.FC = () => {
 
       <div
         className="cta"
-        style={{ justifyContent: 'center', marginBottom: '20px' }}
+        style={{ justifyContent: 'center', marginBottom: '20px', wordBreak: 'break-all' }}
       >
-        <b>tiebreak.test/p/{pollSlug}</b>
+        <b>{displayUrl}</b>
         <button
           className="btn dark"
           type="button"
           onClick={() => {
             if (navigator.clipboard) {
-              navigator.clipboard.writeText(
-                `${window.location.origin}/#live/${pollSlug}`
-              );
+              navigator.clipboard.writeText(shareUrl);
             }
             showToast('Link copied');
           }}
@@ -38,7 +38,7 @@ export const CreatedView: React.FC = () => {
         href={`#live/${pollSlug}`}
         onClick={(e) => {
           e.preventDefault();
-          setRoute('live', pollSlug);
+          selectPoll(pollSlug, 'live');
         }}
       >
         Open poll

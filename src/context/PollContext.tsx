@@ -50,6 +50,22 @@ const DEFAULT_POLL: Poll = {
 const PollContext = createContext<PollContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'tb_user_profile';
+const POLLS_STORAGE_KEY = 'tb_local_polls';
+
+const getInitialPolls = (): Poll[] => {
+  try {
+    const saved = localStorage.getItem(POLLS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return [DEFAULT_POLL];
+};
 
 const getInitialProfile = (): { profile: UserProfile; isNewUser: boolean } => {
   try {
@@ -110,7 +126,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initial = parseHash();
   const [route, setRouteState] = useState<RouteType>(initial.route);
   const [activePollId, setActivePollId] = useState<string>(initial.pollId || 'pizza-night');
-  const [allPolls, setAllPolls] = useState<Poll[]>([DEFAULT_POLL]);
+  const [allPolls, setAllPolls] = useState<Poll[]>(getInitialPolls);
   const [selectedOption, setSelectedOption] = useState<number>(-1);
   const [isTied, setIsTied] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -118,6 +134,18 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initialUser = getInitialProfile();
   const [profile, setProfileState] = useState<UserProfile>(initialUser.profile);
   const [showWelcome, setShowWelcome] = useState<boolean>(initialUser.isNewUser);
+
+  const updatePolls = (updater: (prev: Poll[]) => Poll[]) => {
+    setAllPolls((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(POLLS_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   const setProfile = (newProfile: UserProfile) => {
     setProfileState(newProfile);
@@ -131,6 +159,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activePoll =
     allPolls.find((p) => p.id === activePollId) ||
     allPolls.find((p) => p.status === 'open') ||
+    allPolls[0] ||
     DEFAULT_POLL;
 
   const closedPolls = allPolls.filter((p) => p.status === 'closed');
@@ -160,8 +189,12 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshPolls = useCallback(async () => {
     const polls = await apiClient.getPolls();
-    if (polls && polls.length > 0) {
-      setAllPolls(polls);
+    if (polls && Array.isArray(polls) && polls.length > 0) {
+      updatePolls((prev) => {
+        const serverIds = new Set(polls.map((p) => p.id));
+        const localOnly = prev.filter((p) => !serverIds.has(p.id));
+        return [...polls, ...localOnly];
+      });
     }
   }, []);
 
@@ -198,22 +231,46 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const opt = activePoll.options[selectedOption];
     if (!opt) return;
 
-    // Send vote directly to SQLite database
-    await apiClient.castVote(activePoll.id, opt.id);
-    await refreshPolls();
+    // 1. Optimistic update so UI updates immediately
+    updatePolls((prev) =>
+      prev.map((p) => {
+        if (p.id !== activePoll.id) return p;
+        const newOpts = p.options.map((o) => (o.id === opt.id ? { ...o, v: o.v + 1 } : o));
+        const newTotal = (p.totalVotes || 0) + 1;
+        return {
+          ...p,
+          options: newOpts,
+          totalVotes: newTotal,
+          subtitle: `${newTotal} of your crew voted · just now`
+        };
+      })
+    );
 
     setRoute('voted', activePoll.id);
+
+    // 2. Persist to server
+    await apiClient.castVote(activePoll.id, opt.id);
   };
 
   const addSuggestion = async (idea: string, _reason?: string) => {
     if (!idea.trim() || !activePoll) return;
+    const optId = `opt-${activePoll.id}-${Date.now()}`;
+    const newOpt = { id: optId, t: idea.trim(), by: profile.name || 'Crew member', v: 0 };
 
-    // Save suggestion directly to SQLite database
-    await apiClient.suggestOption(activePoll.id, idea.trim(), profile.name);
-    await refreshPolls();
+    updatePolls((prev) =>
+      prev.map((p) => {
+        if (p.id !== activePoll.id) return p;
+        return {
+          ...p,
+          options: [...p.options, newOpt]
+        };
+      })
+    );
 
     setRoute('vote', activePoll.id);
     showToast('Sent to the host for approval');
+
+    await apiClient.suggestOption(activePoll.id, idea.trim(), profile.name || 'Crew member');
   };
 
   const createPoll = async (
@@ -226,36 +283,66 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const validOpts = options.filter((o) => o.trim().length > 0);
     const newId = 'poll-' + Date.now();
 
-    // Insert poll directly to SQLite database
+    const newPoll: Poll = {
+      id: newId,
+      question: question.trim() || 'Untitled poll',
+      status: 'open',
+      closesLabel: `Closes ${closes || 'today 7:00 PM'}`,
+      startedBy: profile.name || 'You',
+      subtitle: '0 votes · just started',
+      options: validOpts.map((t, i) => ({ id: `opt-${newId}-${i}`, t: t.trim(), v: 0 })),
+      totalVotes: 0
+    };
+
+    // 1. Instantly update local state so poll is immediately visible in "My polls"
+    updatePolls((prev) => [newPoll, ...prev.filter((p) => p.id !== newId)]);
+    setActivePollId(newId);
+    setSelectedOption(-1);
+    setNewPollOptions(['', '', '']);
+    setRoute('created', newId);
+
+    // 2. Sync to Supabase
     await apiClient.createPoll({
       id: newId,
       question: question.trim() || 'Untitled poll',
       options: validOpts,
-      closesLabel: `Closes ${closes}`,
-      startedBy: profile.name
+      closesLabel: `Closes ${closes || 'today 7:00 PM'}`,
+      startedBy: profile.name || 'You'
     });
-
-    await refreshPolls();
-    setActivePollId(newId);
-    setNewPollOptions(['', '', '']);
-    setRoute('created', newId);
   };
 
   const endVoting = async () => {
     if (!activePoll) return;
-    const res = await apiClient.closePoll(activePoll.id);
-    if (res?.isTied !== undefined) {
-      setIsTied(res.isTied);
-    }
-    await refreshPolls();
+    const sorted = [...activePoll.options].sort((a, b) => b.v - a.v);
+    const tied = sorted.length >= 2 && sorted[0].v === sorted[1].v && sorted[0].v > 0;
+    const winnerName = tied ? undefined : sorted[0]?.t;
+
+    setIsTied(tied);
+    updatePolls((prev) =>
+      prev.map((p) =>
+        p.id === activePoll.id
+          ? { ...p, status: 'closed', isTied: tied, winner: winnerName }
+          : p
+      )
+    );
+
     setRoute('results', activePoll.id);
+    await apiClient.closePoll(activePoll.id);
   };
 
   const reopenVoting = async () => {
     if (!activePoll) return;
-    await apiClient.reopenPoll(activePoll.id);
-    await refreshPolls();
+    setIsTied(false);
+    updatePolls((prev) =>
+      prev.map((p) =>
+        p.id === activePoll.id
+          ? { ...p, status: 'open', isTied: false, winner: undefined }
+          : p
+      )
+    );
+
     setRoute('live', activePoll.id);
+    await apiClient.reopenPoll(activePoll.id);
   };
 
   const breakTieWithOption = async (optIndex: number) => {
@@ -263,10 +350,17 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const chosen = activePoll.options[optIndex];
     if (!chosen) return;
 
-    await apiClient.resolveTie(activePoll.id, chosen.t);
     setIsTied(false);
-    await refreshPolls();
+    updatePolls((prev) =>
+      prev.map((p) =>
+        p.id === activePoll.id
+          ? { ...p, status: 'closed', isTied: false, winner: chosen.t, tieBrokenByHost: true }
+          : p
+      )
+    );
+
     showToast('Result shared with the crew');
+    await apiClient.resolveTie(activePoll.id, chosen.t);
   };
 
   return (
