@@ -14,6 +14,8 @@ interface PollContextType {
   setSelectedOption: (idx: number) => void;
   profile: UserProfile;
   setProfile: (p: UserProfile) => void;
+  showWelcome: boolean;
+  setShowWelcome: (show: boolean) => void;
   toast: string | null;
   showToast: (msg: string) => void;
   isTied: boolean;
@@ -46,6 +48,39 @@ const DEFAULT_POLL: Poll = {
 };
 
 const PollContext = createContext<PollContextType | undefined>(undefined);
+
+const STORAGE_KEY = 'tb_user_profile';
+
+const getInitialProfile = (): { profile: UserProfile; isNewUser: boolean } => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.name === 'string' && parsed.name.trim().length > 0) {
+        return {
+          profile: {
+            name: parsed.name.trim(),
+            avatarColor: parsed.avatarColor || AVATAR_COLORS[1],
+            notifyOnClose: parsed.notifyOnClose ?? true,
+            notifyOnSuggestion: parsed.notifyOnSuggestion ?? true
+          },
+          isNewUser: false
+        };
+      }
+    }
+  } catch (e) {
+    // ignore localStorage errors
+  }
+  return {
+    profile: {
+      name: '',
+      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+      notifyOnClose: true,
+      notifyOnSuggestion: true
+    },
+    isNewUser: true
+  };
+};
 
 export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const parseHash = (): { route: RouteType; pollId: string | null } => {
@@ -80,12 +115,18 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isTied, setIsTied] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
   const [newPollOptions, setNewPollOptions] = useState<string[]>(['', '', '']);
-  const [profile, setProfile] = useState<UserProfile>({
-    name: 'Christian',
-    avatarColor: AVATAR_COLORS[1],
-    notifyOnClose: true,
-    notifyOnSuggestion: true
-  });
+  const initialUser = getInitialProfile();
+  const [profile, setProfileState] = useState<UserProfile>(initialUser.profile);
+  const [showWelcome, setShowWelcome] = useState<boolean>(initialUser.isNewUser);
+
+  const setProfile = (newProfile: UserProfile) => {
+    setProfileState(newProfile);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
+    } catch (e) {
+      // ignore
+    }
+  };
 
   const activePoll =
     allPolls.find((p) => p.id === activePollId) ||
@@ -242,6 +283,8 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedOption,
         profile,
         setProfile,
+        showWelcome,
+        setShowWelcome,
         toast,
         showToast,
         isTied,

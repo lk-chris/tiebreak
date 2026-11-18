@@ -22,6 +22,30 @@ html {
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+button, a, input, select, textarea, [role="button"], .card, .opt, .btn, .av, label {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+button:focus, a:focus, input:focus, select:focus, textarea:focus, [role="button"]:focus {
+  outline: none;
+}
+
+::selection {
+  background: var(--sand);
+  color: var(--ink);
 }
 
 body {
@@ -591,4 +615,137 @@ textarea:focus {
     width: max-content;
     max-width: 90%;
   }
+}
+
+/* ── Newcomer Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(58, 36, 23, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-box {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 28px;
+  padding: 32px 28px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 24px 48px rgba(58, 36, 23, 0.2);
+  animation: modalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: center;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalPopIn {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.modal-logo i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  display: inline-grid;
+  place-items: center;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.modal-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 10px 0 6px;
+  line-height: 1.2;
+}
+
+.modal-sub {
+  font-size: 14px;
+  color: var(--mut);
+  margin: 0 0 20px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.modal-avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2.5px solid var(--line);
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ink);
+  box-shadow: 0 4px 12px rgba(58, 36, 23, 0.1);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.modal-colors {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+
+.modal-color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modal-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.modal-color-dot.active {
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ink);
+  transform: scale(1.1);
+}
+
+.modal-input {
+  width: 100%;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 13px 20px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+  text-align: center;
+  transition: border-color 0.15s ease;
+}
+
+.modal-input:focus {
+  border-color: var(--teal);
+  outline: none;
 }

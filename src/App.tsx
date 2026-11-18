@@ -2,6 +2,7 @@ import React from 'react';
 import { usePoll } from './context/PollContext';
 import { Header } from './components/Header';
 import { Toast } from './components/Toast';
+import { WelcomeModal } from './components/WelcomeModal';
 import { PollsView } from './views/PollsView';
 import { LiveView } from './views/LiveView';
 import { VoteView } from './views/VoteView';
@@ -48,6 +49,7 @@ export const AppContent: React.FC = () => {
       <Header />
       <main id="app">{renderView()}</main>
       <Toast />
+      <WelcomeModal />
     </>
   );
 };
