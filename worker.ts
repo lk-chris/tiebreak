@@ -1,86 +1,85 @@
+interface KVNamespace {
+  get(key: string, type?: 'text' | 'json' | 'arrayBuffer' | 'stream'): Promise<any>;
+  put(key: string, value: string | ArrayBuffer | ReadableStream): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 interface Env {
-  SUPABASE_URL: string;
-  SUPABASE_ANON_KEY: string;
+  POLLS_KV?: KVNamespace;
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
   ASSETS?: Fetcher;
 }
+
+const SEED_POLL = {
+  id: 'pizza-night',
+  question: 'Pizza night: what are we ordering?',
+  status: 'open',
+  closesLabel: 'Closes today 7:00 PM',
+  startedBy: 'Reubenson',
+  subtitle: '11 of your crew voted · last one 2 min ago',
+  options: [
+    { id: 'p1', t: 'Detroit-style from Emmy’s', by: 'Priya', v: 5 },
+    { id: 'p2', t: 'Pepperoni from Slice House', v: 3 },
+    { id: 'p3', t: 'Veggie supreme from Nino’s', by: 'Jonah', v: 2 },
+    { id: 'p4', t: 'Margherita from Lupa', v: 1 }
+  ],
+  totalVotes: 11
+};
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const { pathname, method } = url;
-    const base = env.SUPABASE_URL?.trim();
-    const key = env.SUPABASE_ANON_KEY?.trim();
-
-    if (pathname === '/api/health') {
-      let sbTest = 'not run';
-      try {
-        const res = await fetch(`${base}/rest/v1/polls`, {
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`
-          }
-        });
-        sbTest = { status: res.status, text: await res.text() } as any;
-      } catch (e: any) {
-        sbTest = { error: e.message } as any;
-      }
-      return new Response(JSON.stringify({ status: 'ok', base, hasKey: !!key, sbTest }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Helper: call Supabase REST API directly (no SDK needed in Worker)
-    const sb = async (
-      path: string,
-      opts: RequestInit = {}
-    ): Promise<any> => {
-      const res = await fetch(`${base}/rest/v1${path}`, {
-        ...opts,
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${key}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-          ...(opts.headers || {})
-        }
-      });
-      const text = await res.text();
-      return text ? JSON.parse(text) : null;
-    };
+    const { pathname } = url;
+    const method = request.method;
 
     const json = (data: any, status = 200) =>
       new Response(JSON.stringify(data), {
         status,
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
       });
 
-    try {
-      // 1. GET /api/polls — fetch all polls + options
-      if (pathname === '/api/polls' && method === 'GET') {
-        const polls = await sb('/polls?order=created_at.desc');
-        if (!Array.isArray(polls)) {
-          return json({ error: polls?.message || 'Failed to fetch polls from database', details: polls }, 500);
-        }
-        const options = await sb('/poll_options?order=v.desc');
-        const optList = Array.isArray(options) ? options : [];
+    if (method === 'OPTIONS') {
+      return json({ ok: true });
+    }
 
-        const data = polls.map((p: any) => {
-          const pollOpts = optList.filter((o: any) => o.poll_id === p.id);
-          const totalVotes = pollOpts.reduce((sum: number, o: any) => sum + o.v, 0);
-          return {
-            id: p.id,
-            question: p.question,
-            status: p.status,
-            closesLabel: p.closes_label,
-            startedBy: p.started_by,
-            subtitle: p.subtitle,
-            winner: p.winner,
-            isTied: p.is_tied,
-            totalVotes,
-            options: pollOpts.map((o: any) => ({ id: o.id, t: o.t, by: o.by, v: o.v }))
-          };
-        });
-        return json(data);
+    // Helper: read polls from Cloudflare KV
+    const getPolls = async (): Promise<any[]> => {
+      if (!env.POLLS_KV) return [SEED_POLL];
+      const raw = await env.POLLS_KV.get('polls_list', 'json');
+      if (!raw || !Array.isArray(raw) || raw.length === 0) {
+        await env.POLLS_KV.put('polls_list', JSON.stringify([SEED_POLL]));
+        await env.POLLS_KV.put('poll:pizza-night', JSON.stringify(SEED_POLL));
+        return [SEED_POLL];
+      }
+      return raw;
+    };
+
+    const savePolls = async (polls: any[]) => {
+      if (!env.POLLS_KV) return;
+      await env.POLLS_KV.put('polls_list', JSON.stringify(polls));
+    };
+
+    if (pathname === '/api/health') {
+      const kvOk = !!env.POLLS_KV;
+      const polls = await getPolls();
+      return json({
+        status: 'ok',
+        storage: kvOk ? 'Cloudflare KV (Active)' : 'Memory',
+        pollCount: polls.length
+      });
+    }
+
+    try {
+      // 1. GET /api/polls — fetch all polls
+      if (pathname === '/api/polls' && method === 'GET') {
+        const polls = await getPolls();
+        return json(polls);
       }
 
       // 2. POST /api/polls — create a new poll
@@ -88,29 +87,30 @@ export default {
         const body: any = await request.json();
         const id = body.id || 'poll-' + Date.now();
 
-        await sb('/polls', {
-          method: 'POST',
-          body: JSON.stringify({
-            id,
-            question: body.question || 'Untitled poll',
-            status: 'open',
-            closes_label: body.closesLabel || 'Today at 7:00 PM',
-            started_by: body.startedBy || 'You',
-            subtitle: '0 votes · just started'
-          })
-        });
+        const opts = (body.options || []).filter((t: string) => t && t.trim().length > 0);
+        const newPoll = {
+          id,
+          question: body.question?.trim() || 'Untitled poll',
+          status: 'open',
+          closesLabel: body.closesLabel || 'Today at 7:00 PM',
+          startedBy: body.startedBy || 'You',
+          subtitle: '0 votes · just started',
+          options: opts.map((t: string, i: number) => ({
+            id: `opt-${id}-${i}`,
+            t: t.trim(),
+            v: 0
+          })),
+          totalVotes: 0
+        };
 
-        const opts = (body.options || []).filter((t: string) => t?.trim());
-        if (opts.length) {
-          await sb('/poll_options', {
-            method: 'POST',
-            body: JSON.stringify(
-              opts.map((t: string, i: number) => ({ id: `opt-${id}-${i}`, poll_id: id, t: t.trim(), v: 0 }))
-            )
-          });
+        const list = await getPolls();
+        const updated = [newPoll, ...list.filter((p: any) => p.id !== id)];
+        await savePolls(updated);
+        if (env.POLLS_KV) {
+          await env.POLLS_KV.put(`poll:${id}`, JSON.stringify(newPoll));
         }
 
-        return json({ success: true, pollId: id }, 201);
+        return json({ success: true, pollId: id, poll: newPoll }, 201);
       }
 
       // 3. POST /api/polls/:id/vote — increment vote count
@@ -120,19 +120,20 @@ export default {
         const body: any = await request.json();
         const optionId = body.optionId;
 
-        // Increment v using Supabase RPC (simple SQL function)
-        await sb(`/rpc/increment_vote`, {
-          method: 'POST',
-          body: JSON.stringify({ option_id: optionId, p_poll_id: pollId })
-        });
-
-        // Get updated total and sync subtitle
-        const opts = await sb(`/poll_options?poll_id=eq.${pollId}&select=v`);
-        const total = (opts || []).reduce((s: number, o: any) => s + o.v, 0);
-        await sb(`/polls?id=eq.${pollId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ subtitle: `${total} of your crew voted · just now` })
-        });
+        const list = await getPolls();
+        const poll = list.find((p: any) => p.id === pollId);
+        if (poll) {
+          const opt = (poll.options || []).find((o: any) => o.id === optionId);
+          if (opt) {
+            opt.v = (opt.v || 0) + 1;
+          }
+          poll.totalVotes = (poll.options || []).reduce((s: number, o: any) => s + (o.v || 0), 0);
+          poll.subtitle = `${poll.totalVotes} of your crew voted · just now`;
+          await savePolls(list);
+          if (env.POLLS_KV) {
+            await env.POLLS_KV.put(`poll:${pollId}`, JSON.stringify(poll));
+          }
+        }
 
         return json({ success: true });
       }
@@ -144,32 +145,52 @@ export default {
         const body: any = await request.json();
         const optId = `opt-${pollId}-${Date.now()}`;
 
-        await sb('/poll_options', {
-          method: 'POST',
-          body: JSON.stringify({ id: optId, poll_id: pollId, t: body.idea.trim(), by: body.by || 'Crew member', v: 0 })
-        });
+        const list = await getPolls();
+        const poll = list.find((p: any) => p.id === pollId);
+        if (poll) {
+          poll.options = poll.options || [];
+          poll.options.push({
+            id: optId,
+            t: (body.idea || '').trim(),
+            by: body.by || 'Crew member',
+            v: 0
+          });
+          await savePolls(list);
+          if (env.POLLS_KV) {
+            await env.POLLS_KV.put(`poll:${pollId}`, JSON.stringify(poll));
+          }
+        }
 
         return json({ success: true, optionId: optId }, 201);
       }
 
-      // 5. POST /api/polls/:id/close — close the poll, detect tie or winner
+      // 5. POST /api/polls/:id/close — close the poll, compute winner/tie
       const closeMatch = pathname.match(/^\/api\/polls\/([^/]+)\/close$/);
       if (closeMatch && method === 'POST') {
         const pollId = closeMatch[1];
-        const opts = await sb(`/poll_options?poll_id=eq.${pollId}&order=v.desc`);
+        const list = await getPolls();
+        const poll = list.find((p: any) => p.id === pollId);
 
         let isTied = false;
         let winner: string | null = null;
-        if (opts?.length >= 2 && opts[0].v === opts[1].v && opts[0].v > 0) {
-          isTied = true;
-        } else if (opts?.length > 0) {
-          winner = opts[0].t;
-        }
 
-        await sb(`/polls?id=eq.${pollId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'closed', is_tied: isTied, winner })
-        });
+        if (poll) {
+          const sorted = [...(poll.options || [])].sort((a: any, b: any) => (b.v || 0) - (a.v || 0));
+          if (sorted.length >= 2 && sorted[0].v === sorted[1].v && sorted[0].v > 0) {
+            isTied = true;
+          } else if (sorted.length > 0) {
+            winner = sorted[0].t;
+          }
+
+          poll.status = 'closed';
+          poll.isTied = isTied;
+          poll.winner = winner;
+
+          await savePolls(list);
+          if (env.POLLS_KV) {
+            await env.POLLS_KV.put(`poll:${pollId}`, JSON.stringify(poll));
+          }
+        }
 
         return json({ success: true, isTied, winner });
       }
@@ -178,10 +199,16 @@ export default {
       const reopenMatch = pathname.match(/^\/api\/polls\/([^/]+)\/reopen$/);
       if (reopenMatch && method === 'POST') {
         const pollId = reopenMatch[1];
-        await sb(`/polls?id=eq.${pollId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'open', is_tied: false })
-        });
+        const list = await getPolls();
+        const poll = list.find((p: any) => p.id === pollId);
+        if (poll) {
+          poll.status = 'open';
+          poll.isTied = false;
+          await savePolls(list);
+          if (env.POLLS_KV) {
+            await env.POLLS_KV.put(`poll:${pollId}`, JSON.stringify(poll));
+          }
+        }
         return json({ success: true });
       }
 
@@ -190,10 +217,17 @@ export default {
       if (resolveMatch && method === 'POST') {
         const pollId = resolveMatch[1];
         const body: any = await request.json();
-        await sb(`/polls?id=eq.${pollId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'closed', is_tied: false, winner: body.winner })
-        });
+        const list = await getPolls();
+        const poll = list.find((p: any) => p.id === pollId);
+        if (poll) {
+          poll.status = 'closed';
+          poll.isTied = false;
+          poll.winner = body.winner;
+          await savePolls(list);
+          if (env.POLLS_KV) {
+            await env.POLLS_KV.put(`poll:${pollId}`, JSON.stringify(poll));
+          }
+        }
         return json({ success: true });
       }
     } catch (err: any) {
