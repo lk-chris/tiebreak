@@ -28,6 +28,13 @@ export interface UserProfile {
   notifyOnSuggestion: boolean;
 }
 
+export interface UserVoteRecord {
+  pollId: string;
+  optionId: string;
+  optionTitle: string;
+  votedAt: string;
+}
+
 export type RouteType =
   | 'polls'
   | 'live'

@@ -2,11 +2,12 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const VotedView: React.FC = () => {
-  const { activePoll, selectedOption, setRoute } = usePoll();
+  const { activePoll, selectedOption, setRoute, userVotes } = usePoll();
 
+  const myVote = userVotes[activePoll.id];
   const chosenOption =
     activePoll.options[selectedOption >= 0 ? selectedOption : 0];
-  const chosenText = chosenOption ? chosenOption.t : 'Detroit-style from Emmy’s';
+  const chosenText = myVote ? myVote.optionTitle : (chosenOption ? chosenOption.t : 'your pick');
 
   return (
     <div className="empty">

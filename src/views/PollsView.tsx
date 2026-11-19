@@ -2,7 +2,7 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const PollsView: React.FC = () => {
-  const { setRoute, selectPoll, allPolls } = usePoll();
+  const { setRoute, selectPoll, allPolls, profile, userVotes } = usePoll();
 
   const activePolls = allPolls.filter((p) => p.status !== 'closed');
 
@@ -14,6 +14,8 @@ export const PollsView: React.FC = () => {
       {activePolls.map((poll) => {
         const isDraft = poll.status === 'draft';
         const isVotingOpen = poll.status === 'open';
+        const isMine = poll.startedBy === profile.name || poll.startedBy === 'You';
+        const myVote = userVotes[poll.id];
 
         // Calculate leading summary if options exist
         let detailText = poll.subtitle;
@@ -37,7 +39,13 @@ export const PollsView: React.FC = () => {
             }}
           >
             <div className="top">
-              {isVotingOpen && <span className="chip g">● Voting open</span>}
+              {isMine && <span className="chip">👑 Your poll</span>}
+              {!isMine && myVote && (
+                <span className="chip g">✓ Voted ({myVote.optionTitle})</span>
+              )}
+              {!isMine && !myVote && isVotingOpen && (
+                <span className="chip g">● Voting open</span>
+              )}
               {isDraft && <span className="chip">📝 Draft</span>}
               {poll.closesLabel && !isDraft && (
                 <span className="chip">⏱ {poll.closesLabel}</span>

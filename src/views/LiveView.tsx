@@ -2,8 +2,9 @@ import React from 'react';
 import { usePoll } from '../context/PollContext';
 
 export const LiveView: React.FC = () => {
-  const { activePoll, setRoute, showToast, endVoting } = usePoll();
+  const { activePoll, setRoute, showToast, endVoting, userVotes } = usePoll();
 
+  const myVote = userVotes[activePoll.id];
   const totalVotes = activePoll.options.reduce((sum, opt) => sum + opt.v, 0);
 
   // Sort options so highest votes appear first
@@ -89,7 +90,7 @@ export const LiveView: React.FC = () => {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
         <a
           className="btn teal"
           href={`#vote/${activePoll.id}`}
@@ -98,8 +99,13 @@ export const LiveView: React.FC = () => {
             setRoute('vote', activePoll.id);
           }}
         >
-          Vote now
+          {myVote ? 'Change my vote' : 'Vote now'}
         </a>
+        {myVote && (
+          <span className="chip g">
+            ✓ You voted for {myVote.optionTitle}
+          </span>
+        )}
       </div>
 
       <div className="cta" style={{ wordBreak: 'break-all' }}>

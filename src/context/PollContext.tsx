@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Poll, UserProfile, RouteType, AVATAR_COLORS } from '../types/poll';
+import { Poll, UserProfile, RouteType, AVATAR_COLORS, UserVoteRecord } from '../types/poll';
 import { apiClient } from '../api/client';
 
 interface PollContextType {
@@ -14,6 +14,7 @@ interface PollContextType {
   setSelectedOption: (idx: number) => void;
   profile: UserProfile;
   setProfile: (p: UserProfile) => void;
+  userVotes: Record<string, UserVoteRecord>;
   showWelcome: boolean;
   setShowWelcome: (show: boolean) => void;
   toast: string | null;
@@ -51,6 +52,17 @@ const PollContext = createContext<PollContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'tb_user_profile';
 const POLLS_STORAGE_KEY = 'tb_local_polls';
+const VOTES_STORAGE_KEY = 'tb_user_votes';
+
+const getInitialUserVotes = (): Record<string, UserVoteRecord> => {
+  try {
+    const saved = localStorage.getItem(VOTES_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    // ignore
+  }
+  return {};
+};
 
 const getInitialPolls = (): Poll[] => {
   try {
@@ -131,6 +143,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isTied, setIsTied] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
   const [newPollOptions, setNewPollOptions] = useState<string[]>(['', '', '']);
+  const [userVotes, setUserVotes] = useState<Record<string, UserVoteRecord>>(getInitialUserVotes);
   const initialUser = getInitialProfile();
   const [profile, setProfileState] = useState<UserProfile>(initialUser.profile);
   const [showWelcome, setShowWelcome] = useState<boolean>(initialUser.isNewUser);
@@ -183,7 +196,14 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectPoll = (id: string, targetRoute: RouteType = 'live') => {
     setActivePollId(id);
-    setSelectedOption(-1);
+    const existingVote = userVotes[id];
+    if (existingVote) {
+      const targetPoll = allPolls.find((p) => p.id === id);
+      const optIdx = targetPoll?.options.findIndex((o) => o.id === existingVote.optionId);
+      setSelectedOption(optIdx !== undefined && optIdx >= 0 ? optIdx : -1);
+    } else {
+      setSelectedOption(-1);
+    }
     setRoute(targetRoute, id);
   };
 
@@ -230,6 +250,23 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (selectedOption < 0 || !activePoll) return;
     const opt = activePoll.options[selectedOption];
     if (!opt) return;
+
+    // Save vote record to user's account / device storage
+    const voteRecord: UserVoteRecord = {
+      pollId: activePoll.id,
+      optionId: opt.id,
+      optionTitle: opt.t,
+      votedAt: new Date().toISOString()
+    };
+    setUserVotes((prev) => {
+      const next = { ...prev, [activePoll.id]: voteRecord };
+      try {
+        localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        // ignore
+      }
+      return next;
+    });
 
     // 1. Optimistic update so UI updates immediately
     updatePolls((prev) =>
@@ -377,6 +414,7 @@ export const PollProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedOption,
         profile,
         setProfile,
+        userVotes,
         showWelcome,
         setShowWelcome,
         toast,
